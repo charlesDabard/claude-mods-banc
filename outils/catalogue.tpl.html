@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Banc des mods</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root { color-scheme: dark; }
+      html, body { background: #0a0a0a; color: #fafafa; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .grad { background: linear-gradient(90deg, #a855f7, #d946ef, #ec4899); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; }
+      .thumb { aspect-ratio: 16 / 9; background: repeating-linear-gradient(45deg, #111113 0 10px, #0d0d0f 10px 20px); }
+      .thumb img { width: 100%; height: 100%; object-fit: contain; }
+      .card.sel { border-color: #d946ef; box-shadow: 0 0 0 1px #d946ef55; }
+      dialog::backdrop { background: rgba(0, 0, 0, 0.85); }
+      .chip[aria-pressed="true"] { background: #d946ef22; border-color: #d946ef; color: #f5d0fe; }
+    </style>
+  </head>
+  <body class="min-h-screen pb-40">
+    <header class="sticky top-0 z-40 border-b border-zinc-900 bg-zinc-950/90 backdrop-blur">
+      <div class="mx-auto max-w-7xl px-4 sm:px-8 py-4 flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div class="flex items-center gap-3">
+          <div class="h-2 w-2 rounded-full bg-fuchsia-400 animate-pulse"></div>
+          <div class="mono text-xs uppercase tracking-[0.25em] text-fuchsia-400">Claude Code · banc des mods</div>
+        </div>
+        <input id="q" type="search" placeholder="Chercher un mod, un usage, un auteur…" class="flex-1 min-w-[14rem] rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-2 text-sm outline-none focus:border-fuchsia-500" />
+        <div class="mono text-xs text-zinc-500"><span id="nb" class="text-zinc-200">67</span> affichés</div>
+      </div>
+      <div class="mx-auto max-w-7xl px-4 sm:px-8 pb-4 flex flex-wrap gap-2" id="chips"></div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 sm:px-8">
+      <section class="pt-12 pb-10">
+        <h1 class="text-4xl md:text-6xl font-bold tracking-tighter leading-[0.95]">67 mods, <span class="grad">audités et classés</span>.</h1>
+        <p class="mt-6 max-w-3xl text-lg text-zinc-400 leading-relaxed">Chaque mod a été cloné à un commit précis et passé à <span class="mono text-zinc-300">claude plugin validate</span>. Les badges viennent de cet audit, pas des README : ils disent ce que le code a le droit de faire. Coche ceux à essayer, la commande du banc se compose en bas : il installe chaque mod dans un projet jetable, te laisse le tester, puis le garde ou le désinstalle aussitôt.</p>
+        <div class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3" id="stats"></div>
+        <div class="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-sm text-zinc-400" id="legende"></div>
+      </section>
+      <div id="groupes"></div>
+    </main>
+
+    <footer id="barre" class="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur translate-y-full transition-transform">
+      <div class="mx-auto max-w-7xl px-4 sm:px-8 py-4 flex flex-wrap items-center gap-3">
+        <div class="mono text-xs uppercase tracking-wider text-fuchsia-300"><span id="nbsel">0</span> à essayer</div>
+        <code id="cmd" class="mono flex-1 min-w-0 truncate rounded-lg border border-zinc-800 bg-black px-3 py-2 text-xs text-emerald-300"></code>
+        <button id="copier" class="rounded-lg bg-fuchsia-500 px-4 py-2 text-sm font-semibold text-black hover:bg-fuchsia-400">Copier</button>
+        <button id="vider" class="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500">Vider</button>
+      </div>
+      <p class="mx-auto max-w-7xl px-4 sm:px-8 pb-3 text-xs text-zinc-500">À lancer depuis le dossier du dépôt, dans un terminal à part (pas via « ! » dans Claude Code) : le banc ouvre lui-même des sessions Claude Code.</p>
+    </footer>
+
+    <dialog id="lb" class="max-w-6xl w-[95vw] rounded-2xl border border-zinc-800 bg-zinc-950 p-0 text-zinc-100">
+      <div class="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+        <div id="lbt" class="mono text-sm text-fuchsia-300"></div>
+        <button id="lbx" class="text-zinc-400 hover:text-white text-xl leading-none" aria-label="Fermer">×</button>
+      </div>
+      <div id="lbc" class="max-h-[80vh] overflow-auto p-5 grid gap-5"></div>
+    </dialog>
+
+    <script>
+      const DATA = /*DATA*/[];
+            const TIERS = {
+        top: ["À essayer en premier", "Le meilleur rapport utilité et risque pour un usage quotidien de développeur.", "text-emerald-300", "border-emerald-900/50"],
+        cible: ["Utiles dans un cas précis", "Bons pour un besoin particulier, ou doublons d'un mod mieux placé.", "text-sky-300", "border-sky-900/50"],
+        non: ["Gadgets, coûteux ou risqués", "Esthétiques, gourmands en quota, dépendants d'un service tiers, ou trop larges en droits.", "text-amber-300", "border-amber-900/50"],
+        lemo: ["Famille lemo", "Dépôt chinois, 17 mods qui dépendent tous de lemo-core, interface en chinois et en anglais.", "text-zinc-300", "border-zinc-800"],
+      };
+      const FLAGS = {
+        cmd: ["lance des commandes", "bg-red-950/60 text-red-300 border-red-900"],
+        "réseau": ["appels réseau", "bg-orange-950/60 text-orange-300 border-orange-900"],
+        "écrit": ["écrit des fichiers", "bg-amber-950/60 text-amber-300 border-amber-900"],
+        "modèle": ["appelle le modèle (quota)", "bg-violet-950/60 text-violet-300 border-violet-900"],
+        env: ["lit tes variables d'environnement", "bg-yellow-950/60 text-yellow-300 border-yellow-900"],
+        "tape à ta place": ["envoie un prompt à Claude", "bg-pink-950/60 text-pink-300 border-pink-900"],
+      };
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const enc = (p) => p;
+
+      let sel = new Set();
+      try { sel = new Set(JSON.parse(localStorage.getItem("banc-sel") || "[]")); } catch (e) {}
+      const filtres = { tier: null, propre: false, q: "" };
+
+      /* stats + légende */
+      const nbPropres = DATA.filter((d) => !d.flags.length).length;
+      const stat = (n, l) => `<div class="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4"><div class="text-3xl font-bold">${n}</div><div class="mt-1 text-xs uppercase tracking-wider text-zinc-500">${l}</div></div>`;
+      document.getElementById("stats").innerHTML =
+        stat(DATA.length, "mods audités") + stat(DATA.filter((d) => d.tier === "top").length, "à essayer en premier") +
+        stat(nbPropres, "sans droit sensible") + stat(DATA.filter((d) => d.img_specifique).length, "avec capture du mod");
+      document.getElementById("legende").innerHTML = Object.entries(FLAGS)
+        .map(([k, [l, c]]) => `<span class="inline-flex items-center gap-2"><span class="mono rounded-md border px-1.5 py-0.5 text-[11px] ${c}">${k}</span>${l}</span>`).join("") +
+        `<span class="inline-flex items-center gap-2"><span class="mono rounded-md border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300">intercepte</span>peut tenir ou changer un appel d'outil</span>`;
+
+      /* filtres */
+      const chips = document.getElementById("chips");
+      const chip = (id, label) => `<button class="chip mono rounded-full border border-zinc-800 px-3 py-1 text-xs text-zinc-400 hover:border-zinc-600" data-f="${id}" aria-pressed="false">${label}</button>`;
+      chips.innerHTML = chip("tous", "Tous") + Object.entries(TIERS).map(([k, v]) => chip(k, v[0])).join("") + chip("propre", "Sans droit sensible") + chip("coches", "Cochés");
+      chips.addEventListener("click", (e) => {
+        const b = e.target.closest("button"); if (!b) return;
+        const f = b.dataset.f;
+        if (f === "propre") filtres.propre = !filtres.propre;
+        else if (f === "coches") filtres.tier = filtres.tier === "coches" ? null : "coches";
+        else filtres.tier = f === "tous" ? null : filtres.tier === f ? null : f;
+        rendre();
+      });
+      document.getElementById("q").addEventListener("input", (e) => { filtres.q = e.target.value.toLowerCase(); rendre(); });
+
+      function carte(d) {
+        const img = d.imgs.length
+          ? `<button class="thumb relative block w-full overflow-hidden rounded-xl border border-zinc-800" data-lb="${d.rang}"><img loading="lazy" src="${enc(d.imgs[0])}" alt="Capture de ${esc(d.nom)}" />${d.imgs.length > 1 ? `<span class="mono absolute bottom-2 right-2 rounded bg-black/80 px-2 py-0.5 text-[11px] text-zinc-300">+${d.imgs.length - 1}</span>` : ""}${d.img_specifique ? "" : `<span class="mono absolute top-2 left-2 rounded bg-black/80 px-2 py-0.5 text-[11px] text-amber-300">image du dépôt, pas de ce mod</span>`}</button>`
+          : `<a href="${d.repo}" target="_blank" rel="noopener" class="thumb relative block overflow-hidden rounded-xl border border-zinc-800"><img loading="lazy" src="${d.og}" alt="Carte GitHub de ${esc(d.auteur)}" onerror="this.nextElementSibling.textContent='pas de capture · ouvrir le dépôt ↗'; this.remove()" /><span class="mono absolute top-2 left-2 rounded bg-black/80 px-2 py-0.5 text-[11px] text-zinc-400">pas de capture · carte GitHub du dépôt</span></a>`;
+        const badges = d.flags.map((f) => `<span class="mono rounded-md border px-1.5 py-0.5 text-[11px] ${FLAGS[f][1]}" title="${FLAGS[f][0]}">${f}</span>`).join("") +
+          (d.intercepte ? `<span class="mono rounded-md border border-zinc-700 px-1.5 py-0.5 text-[11px] text-zinc-300" title="peut tenir ou changer un appel d'outil">intercepte</span>` : "") +
+          (!d.flags.length ? `<span class="mono rounded-md border border-emerald-900 bg-emerald-950/50 px-1.5 py-0.5 text-[11px] text-emerald-300">aucun droit sensible</span>` : "");
+        const ok = sel.has(d.cle);
+        return `<article class="card ${ok ? "sel" : ""} flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-4" data-cle="${esc(d.cle)}">
+          ${img}
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="mono text-xs text-zinc-500">#${d.rang} · ${esc(d.auteur)}</div>
+              <h3 class="mt-1 text-xl font-semibold tracking-tight break-words">${esc(d.nom)}</h3>
+            </div>
+            <label class="mono flex shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-300 hover:border-fuchsia-500">
+              <input type="checkbox" class="accent-fuchsia-500" data-sel="${esc(d.cle)}" ${ok ? "checked" : ""} /> essayer
+            </label>
+          </div>
+          <p class="text-[15px] leading-relaxed text-zinc-300">${esc(d.txt)}</p>
+          <div class="flex flex-wrap gap-1.5">${badges}</div>
+          <div class="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-800/80 pt-3 text-xs text-zinc-500">
+            <span class="mono">${d.loc.toLocaleString("fr-FR")} lignes</span>
+            <span class="mono basis-full truncate order-first" title="${esc(d.events.join(", "))}">${esc(d.events.slice(0, 3).join(" · "))}${d.events.length > 3 ? " …" : ""}</span>
+            ${d.install ? `<button class="copy-install text-emerald-300 hover:text-emerald-200" data-install="${esc(d.install)}" title="${esc(d.install)}">installer ⧉</button>` : ""}
+            <a class="ml-auto text-fuchsia-300 hover:text-fuchsia-200" href="${d.url}" target="_blank" rel="noopener">code ↗</a>
+            <a class="text-zinc-400 hover:text-zinc-200" href="${d.repo}" target="_blank" rel="noopener">dépôt ↗</a>
+          </div>
+        </article>`;
+      }
+
+      function rendre() {
+        const q = filtres.q;
+        const vis = DATA.filter((d) =>
+          (!filtres.tier || (filtres.tier === "coches" ? sel.has(d.cle) : d.tier === filtres.tier)) &&
+          (!filtres.propre || !d.flags.length) &&
+          (!q || (d.nom + " " + d.auteur + " " + d.txt + " " + d.events.join(" ")).toLowerCase().includes(q)));
+        document.getElementById("nb").textContent = vis.length;
+        chips.querySelectorAll("button").forEach((b) => {
+          const f = b.dataset.f;
+          b.setAttribute("aria-pressed", f === "propre" ? filtres.propre : f === "tous" ? !filtres.tier : filtres.tier === f);
+        });
+        document.getElementById("groupes").innerHTML = Object.entries(TIERS).map(([k, [titre, sous, col, bord]]) => {
+          const g = vis.filter((d) => d.tier === k);
+          if (!g.length) return "";
+          return `<section class="mb-14"><div class="mb-5 border-b ${bord} pb-3"><h2 class="text-2xl md:text-3xl font-bold tracking-tight ${col}">${titre} <span class="mono text-base text-zinc-600">${g.length}</span></h2><p class="mt-1 text-zinc-500">${sous}</p></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">${g.map(carte).join("")}</div></section>`;
+        }).join("") || `<p class="py-20 text-center text-zinc-500">Aucun mod ne correspond.</p>`;
+        barre();
+      }
+
+      function barre() {
+        const ordre = DATA.filter((d) => sel.has(d.cle)).map((d) => d.cle);
+        document.getElementById("nbsel").textContent = ordre.length;
+        document.getElementById("cmd").textContent = `bash banc.sh ${ordre.join(" ")}`;
+        document.getElementById("barre").classList.toggle("translate-y-full", !ordre.length);
+        try { localStorage.setItem("banc-sel", JSON.stringify(ordre)); } catch (e) {}
+      }
+
+      document.addEventListener("change", (e) => {
+        const c = e.target.dataset && e.target.dataset.sel; if (!c) return;
+        e.target.checked ? sel.add(c) : sel.delete(c);
+        e.target.closest(".card").classList.toggle("sel", e.target.checked);
+        if (filtres.tier === "coches") rendre(); else barre();
+      });
+      document.getElementById("vider").onclick = () => { sel.clear(); rendre(); };
+      document.getElementById("copier").onclick = (e) => {
+        navigator.clipboard.writeText(document.getElementById("cmd").textContent).then(() => {
+          e.target.textContent = "✓ Copié"; setTimeout(() => (e.target.textContent = "Copier"), 1200);
+        });
+      };
+
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest(".copy-install"); if (!b) return;
+        navigator.clipboard.writeText(b.dataset.install).then(() => { const t = b.textContent; b.textContent = "✓ copié"; setTimeout(() => (b.textContent = t), 1200); });
+      });
+      const lb = document.getElementById("lb");
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-lb]"); if (!b) return;
+        const d = DATA.find((x) => x.rang == b.dataset.lb);
+        document.getElementById("lbt").textContent = `#${d.rang} ${d.nom}` + (d.img_specifique ? "" : " · image du dépôt, pas de ce mod");
+        document.getElementById("lbc").innerHTML = d.imgs.map((s) => `<figure><img src="${enc(s)}" alt="" class="w-full rounded-xl border border-zinc-800 bg-zinc-900" /><figcaption class="mono mt-2 text-xs text-zinc-500">${esc(s.split("/").slice(7).join("/"))}</figcaption></figure>`).join("");
+        lb.showModal();
+      });
+      document.getElementById("lbx").onclick = () => lb.close();
+      lb.addEventListener("click", (e) => { if (e.target === lb) lb.close(); });
+
+      rendre();
+    </script>
+  </body>
+</html>
